@@ -1038,7 +1038,12 @@ with st.sidebar:
     if mode == "Times":
         sorted_teams = sorted(coletor.ALL_TEAMS.items(), key=lambda x: x[1])
         name_to_id   = {n: tid for tid, n in sorted_teams}
-        sel_names    = st.multiselect("Times", list(name_to_id), placeholder="Buscar time...")
+        all_names    = list(name_to_id)
+        if st.button("Selecionar todos", use_container_width=True):
+            st.session_state["sel_teams_all"] = all_names
+        default_sel  = st.session_state.pop("sel_teams_all", [])
+        sel_names    = st.multiselect("Times", all_names, default=default_sel,
+                                      placeholder="Buscar time...")
         n_games      = st.slider("Jogos por time", 1, 15, 5)
 
         with st.expander("Filtros de análise"):
