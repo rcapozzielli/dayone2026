@@ -1000,16 +1000,17 @@ with st.sidebar:
     st.title("Copa 2026 Stats")
 
     worker = st.session_state.worker
+    # Descarta worker cujo thread morreu
+    if worker is not None and not worker._t.is_alive():
+        st.session_state.worker = None
+        worker = None
+
     if worker is None or not worker.ready:
         st.warning("Sessão inativa")
         if st.button("Iniciar Sessão", type="primary", use_container_width=True):
             if worker is None:
                 worker = _PlaywrightWorker()
                 st.session_state.worker = worker
-            import time as _time
-            _time.sleep(0.2)
-            st.write(f"Thread viva: {worker._t.is_alive()}")
-            st.write(f"Loop error: {worker._loop_error}")
             with st.spinner("Abrindo Chromium..."):
                 try:
                     worker.start_session()
