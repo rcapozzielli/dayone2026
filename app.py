@@ -1080,34 +1080,40 @@ with st.sidebar:
 # ── Coleta ────────────────────────────────────────────────────────────────────
 
 if do_collect_teams:
-    sess  = _WorkerSession(st.session_state.worker)
-    teams = {name_to_id[n]: n for n in sel_names}
-    total = len(teams)
-    bar   = st.progress(0, text="Iniciando...")
-    rows  = []
-    for i, (tid, tname) in enumerate(teams.items()):
-        bar.progress(i / total, text=f"Coletando {tname} ({i+1}/{total})...")
-        rows.extend(coletor.collect_team_stats(sess, tid, tname, n_games=n_games))
-        bar.progress((i + 1) / total)
-    st.session_state.team_data = rows
-    bar.empty()
-    st.rerun()
+    try:
+        sess  = _WorkerSession(st.session_state.worker)
+        teams = {name_to_id[n]: n for n in sel_names}
+        total = len(teams)
+        bar   = st.progress(0, text="Iniciando...")
+        rows  = []
+        for i, (tid, tname) in enumerate(teams.items()):
+            bar.progress(i / total, text=f"Coletando {tname} ({i+1}/{total})...")
+            rows.extend(coletor.collect_team_stats(sess, tid, tname, n_games=n_games))
+            bar.progress((i + 1) / total)
+        st.session_state.team_data = rows
+        bar.empty()
+        st.rerun()
+    except Exception as _e:
+        st.error(f"Erro na coleta de times: {_e}")
 
 if do_collect_players:
-    sess  = _WorkerSession(st.session_state.worker)
-    tid   = copa_name_to_id[chosen_team]
-    plist = [player_options[lbl] for lbl in sel_labels if lbl in player_options]
-    total = len(plist)
-    bar   = st.progress(0, text="Iniciando...")
-    rows  = []
-    for i, p in enumerate(plist):
-        bar.progress(i / total, text=f"Coletando {p['name']} ({i+1}/{total})...")
-        rows.extend(collect_player_stats(sess, p["id"], p["name"], tid, chosen_team, n_games,
-                                          selecao_only=selecao_only))
-        bar.progress((i + 1) / total)
-    st.session_state.player_data = rows
-    bar.empty()
-    st.rerun()
+    try:
+        sess  = _WorkerSession(st.session_state.worker)
+        tid   = copa_name_to_id[chosen_team]
+        plist = [player_options[lbl] for lbl in sel_labels if lbl in player_options]
+        total = len(plist)
+        bar   = st.progress(0, text="Iniciando...")
+        rows  = []
+        for i, p in enumerate(plist):
+            bar.progress(i / total, text=f"Coletando {p['name']} ({i+1}/{total})...")
+            rows.extend(collect_player_stats(sess, p["id"], p["name"], tid, chosen_team, n_games,
+                                              selecao_only=selecao_only))
+            bar.progress((i + 1) / total)
+        st.session_state.player_data = rows
+        bar.empty()
+        st.rerun()
+    except Exception as _e:
+        st.error(f"Erro na coleta de jogadores: {_e}")
 
 # ── Exibição: Times ───────────────────────────────────────────────────────────
 
