@@ -102,7 +102,7 @@ class BrowserSession:
         """Visita a página principal para estabelecer sessão/cookies."""
         print("Iniciando sessão no SofaScore...")
         self._page.goto("https://www.sofascore.com/", wait_until="domcontentloaded", timeout=60_000)
-        time.sleep(3)
+        time.sleep(1)
         print("Sessão pronta.\n")
 
     def get_json(self, path: str) -> dict:
