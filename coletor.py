@@ -14,6 +14,7 @@ Dependências:
 import difflib
 import json
 import os
+import shutil
 import unicodedata
 import time
 from datetime import datetime
@@ -70,16 +71,29 @@ _UA = (
 # 403 por TLS-fingerprinting / challenge que o SofaScore impõe a requests.
 # ---------------------------------------------------------------------------
 
+def _system_chromium() -> str | None:
+    """Retorna o path do Chromium do sistema, se disponível."""
+    for name in ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable"):
+        path = shutil.which(name)
+        if path:
+            return path
+    return None
+
+
 class BrowserSession:
     """Wrapper fino sobre uma página Playwright para chamadas à API."""
 
     def __init__(self):
         self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(
+        launch_args = dict(
             headless=True,
             args=["--no-sandbox", "--disable-setuid-sandbox",
                   "--disable-dev-shm-usage", "--disable-gpu"],
         )
+        sys_chrome = _system_chromium()
+        if sys_chrome:
+            launch_args["executable_path"] = sys_chrome
+        self._browser = self._pw.chromium.launch(**launch_args)
         self._ctx = self._browser.new_context(user_agent=_UA)
         self._page: Page = self._ctx.new_page()
         self._warm_up()
