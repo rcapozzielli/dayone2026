@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import playwright; print\\('playwright ok'\\)\")",
+      "Bash(python -c \"import requests; print\\('requests ok'\\)\")",
+      "Bash(pip install *)",
+      "Bash(python -c \"import requests; print\\(requests.__version__\\)\")",
+      "Bash(where python *)",
+      "Bash(python -m pip show requests)",
+      "Bash(python -m pip install requests)",
+      "Bash(python -c \"import requests; print\\('ok', requests.__version__\\)\")",
+      "Bash(python -c ' *)"
+    ]
+  }
+}

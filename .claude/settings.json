@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python coletor.py)",
+      "Bash(python -c ' *)"
+    ]
+  }
+}
