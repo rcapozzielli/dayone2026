@@ -13,8 +13,10 @@ import threading
 # Instala o Chromium do Playwright se ainda não estiver presente (Streamlit Cloud)
 _pw_cache = pathlib.Path.home() / ".cache" / "ms-playwright"
 if not any(_pw_cache.glob("chromium-*")):
-    subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"],
-                   check=False, capture_output=True)
+    subprocess.run(
+        [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
+        check=False, capture_output=True
+    )
 
 import pandas as pd
 import plotly.graph_objects as go
