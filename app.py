@@ -5,6 +5,7 @@ streamlit run app.py
 
 import asyncio
 import queue
+import sys
 import threading
 
 import pandas as pd
