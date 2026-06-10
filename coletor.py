@@ -75,7 +75,11 @@ class BrowserSession:
 
     def __init__(self):
         self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(headless=True)
+        self._browser = self._pw.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-setuid-sandbox",
+                  "--disable-dev-shm-usage", "--disable-gpu"],
+        )
         self._ctx = self._browser.new_context(user_agent=_UA)
         self._page: Page = self._ctx.new_page()
         self._warm_up()
