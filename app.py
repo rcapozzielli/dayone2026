@@ -28,21 +28,26 @@ class _PlaywrightWorker:
     def __init__(self):
         self._q = queue.Queue()
         self._session = None
+        self._loop_error = None
         self._t = threading.Thread(target=self._loop, daemon=True)
         self._t.start()
 
     def _loop(self):
-        if sys.platform == "win32":
-            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-        while True:
-            item = self._q.get()
-            if item is None:
-                break
-            fn, rq = item
-            try:
-                rq.put(("ok", fn()))
-            except Exception as exc:
-                rq.put(("err", exc))
+        try:
+            if sys.platform == "win32":
+                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+            while True:
+                item = self._q.get()
+                if item is None:
+                    break
+                fn, rq = item
+                try:
+                    rq.put(("ok", fn()))
+                except Exception as exc:
+                    rq.put(("err", exc))
+        except Exception as e:
+            self._loop_error = str(e)
+            print(f"[debug] _loop crashed: {e}")
 
     def _run(self, fn, timeout=90):
         rq = queue.Queue()
@@ -1001,6 +1006,10 @@ with st.sidebar:
             if worker is None:
                 worker = _PlaywrightWorker()
                 st.session_state.worker = worker
+            import time as _time
+            _time.sleep(0.2)
+            st.write(f"Thread viva: {worker._t.is_alive()}")
+            st.write(f"Loop error: {worker._loop_error}")
             with st.spinner("Abrindo Chromium..."):
                 try:
                     worker.start_session()
