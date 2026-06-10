@@ -14,6 +14,7 @@ Dependências:
 import difflib
 import json
 import os
+import sys as _sys
 import unicodedata
 import time
 from datetime import datetime
@@ -75,11 +76,10 @@ class BrowserSession:
 
     def __init__(self):
         self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-setuid-sandbox",
-                  "--disable-dev-shm-usage", "--disable-gpu"],
-        )
+        _args = []
+        if _sys.platform != "win32":
+            _args += ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+        self._browser = self._pw.chromium.launch(headless=True, args=_args)
         self._ctx = self._browser.new_context(user_agent=_UA)
         self._page: Page = self._ctx.new_page()
         self._warm_up()
