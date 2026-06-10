@@ -129,9 +129,8 @@ def fetch_last_games(session: BrowserSession, team_id: int, n_games: int = 5) ->
         try:
             data = session.get_json(f"/team/{team_id}/events/last/{page}")
             events = data.get("events", [])
-        except RuntimeError as e:
-            print(f"  [ERRO] Jogos do time {team_id} (p{page}): {e}")
-            break
+        except Exception as e:
+            raise RuntimeError(f"Falha ao buscar jogos do time {team_id} (p{page}): {e}") from e
 
         if not events:
             break
