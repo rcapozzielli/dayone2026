@@ -44,10 +44,13 @@ class _PlaywrightWorker:
             except Exception as exc:
                 rq.put(("err", exc))
 
-    def _run(self, fn):
+    def _run(self, fn, timeout=90):
         rq = queue.Queue()
         self._q.put((fn, rq))
-        status, value = rq.get()
+        try:
+            status, value = rq.get(timeout=timeout)
+        except queue.Empty:
+            raise TimeoutError(f"Playwright travou após {timeout}s")
         if status == "err":
             raise value
         return value
@@ -57,8 +60,14 @@ class _PlaywrightWorker:
         return self._session is not None
 
     def start_session(self):
+        import shutil, os
+        chrome = shutil.which("chromium") or shutil.which("chromium-browser")
+        print(f"[debug] chromium path: {chrome}")
+        print(f"[debug] PLAYWRIGHT_BROWSERS_PATH: {os.environ.get('PLAYWRIGHT_BROWSERS_PATH')}")
         def _s():
+            print("[debug] iniciando BrowserSession...")
             self._session = coletor.BrowserSession()
+            print("[debug] BrowserSession pronta")
         self._run(_s)
 
     def stop_session(self):
@@ -993,8 +1002,12 @@ with st.sidebar:
                 worker = _PlaywrightWorker()
                 st.session_state.worker = worker
             with st.spinner("Abrindo Chromium..."):
-                worker.start_session()
-            st.rerun()
+                try:
+                    worker.start_session()
+                    st.rerun()
+                except Exception as e:
+                    st.session_state.worker = None
+                    st.error(f"Erro ao iniciar sessão: {e}")
     else:
         st.success("Sessão ativa")
         if st.button("Encerrar sessão", use_container_width=True):
