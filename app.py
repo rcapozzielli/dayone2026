@@ -1079,10 +1079,9 @@ with st.sidebar:
 
 # ── Coleta ────────────────────────────────────────────────────────────────────
 
-st.write(f"DEBUG: do_collect_teams={do_collect_teams} | do_collect_players={do_collect_players} | ready={ready} | worker={st.session_state.worker is not None}")
+st.write(f"DEBUG: do_collect_teams={do_collect_teams} | ready={ready} | worker={st.session_state.worker is not None} | team_data={len(st.session_state.team_data)} rows")
 
 if do_collect_teams:
-    st.write("DEBUG: entrando no bloco de coleta de times...")
     try:
         sess  = _WorkerSession(st.session_state.worker)
         teams = {name_to_id[n]: n for n in sel_names}
@@ -1091,7 +1090,9 @@ if do_collect_teams:
         rows  = []
         for i, (tid, tname) in enumerate(teams.items()):
             bar.progress(i / total, text=f"Coletando {tname} ({i+1}/{total})...")
-            rows.extend(coletor.collect_team_stats(sess, tid, tname, n_games=n_games))
+            new_rows = coletor.collect_team_stats(sess, tid, tname, n_games=n_games)
+            st.write(f"DEBUG: {tname} → {len(new_rows)} linhas coletadas")
+            rows.extend(new_rows)
             bar.progress((i + 1) / total)
         st.session_state.team_data = rows
         bar.empty()
