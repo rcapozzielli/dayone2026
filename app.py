@@ -1079,7 +1079,10 @@ with st.sidebar:
 
 # ── Coleta ────────────────────────────────────────────────────────────────────
 
+st.write(f"DEBUG: do_collect_teams={do_collect_teams} | do_collect_players={do_collect_players} | ready={ready} | worker={st.session_state.worker is not None}")
+
 if do_collect_teams:
+    st.write("DEBUG: entrando no bloco de coleta de times...")
     try:
         sess  = _WorkerSession(st.session_state.worker)
         teams = {name_to_id[n]: n for n in sel_names}
