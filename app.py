@@ -75,14 +75,8 @@ class _PlaywrightWorker:
         return self._session is not None
 
     def start_session(self):
-        import shutil, os
-        chrome = shutil.which("chromium") or shutil.which("chromium-browser")
-        print(f"[debug] chromium path: {chrome}")
-        print(f"[debug] PLAYWRIGHT_BROWSERS_PATH: {os.environ.get('PLAYWRIGHT_BROWSERS_PATH')}")
         def _s():
-            print("[debug] iniciando BrowserSession...")
             self._session = coletor.BrowserSession()
-            print("[debug] BrowserSession pronta")
         self._run(_s)
 
     def stop_session(self):
@@ -1055,6 +1049,21 @@ with st.sidebar:
 
         do_collect_teams   = st.button("Coletar", type="primary", use_container_width=True,
                                         disabled=not (sel_names and ready))
+
+        st.divider()
+        up_teams = st.file_uploader("Importar JSON de times", type="json", key="up_teams",
+                                     help="Exporte localmente e importe aqui")
+        if up_teams is not None:
+            import json as _j
+            st.session_state.team_data = _j.loads(up_teams.read())
+            st.rerun()
+
+        if st.session_state.team_data:
+            import json as _j
+            st.download_button("Exportar dados coletados", use_container_width=True,
+                               data=_j.dumps(st.session_state.team_data, ensure_ascii=False, indent=2),
+                               file_name="times_data.json", mime="application/json")
+
         do_collect_players = False
 
     else:
@@ -1085,11 +1094,25 @@ with st.sidebar:
 
         do_collect_players = st.button("Coletar", type="primary", use_container_width=True,
                                         disabled=not (sel_labels and ready))
+
+        st.divider()
+        up_players = st.file_uploader("Importar JSON de jogadores", type="json", key="up_players",
+                                       help="Exporte localmente e importe aqui")
+        if up_players is not None:
+            import json as _j
+            st.session_state.player_data = _j.loads(up_players.read())
+            st.rerun()
+
+        if st.session_state.player_data:
+            import json as _j
+            st.download_button("Exportar dados coletados", use_container_width=True,
+                               data=_j.dumps(st.session_state.player_data, ensure_ascii=False, indent=2),
+                               file_name="jogadores_data.json", mime="application/json")
+
         do_collect_teams   = False
 
 # ── Coleta ────────────────────────────────────────────────────────────────────
 
-st.write(f"DEBUG: do_collect_teams={do_collect_teams} | ready={ready} | worker={st.session_state.worker is not None} | team_data={len(st.session_state.team_data)} rows")
 
 if do_collect_teams:
     try:
