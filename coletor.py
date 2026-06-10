@@ -14,7 +14,6 @@ Dependências:
 import difflib
 import json
 import os
-import shutil
 import unicodedata
 import time
 from datetime import datetime
@@ -71,36 +70,18 @@ _UA = (
 # 403 por TLS-fingerprinting / challenge que o SofaScore impõe a requests.
 # ---------------------------------------------------------------------------
 
-def _system_chromium() -> str | None:
-    """Retorna o path do Chromium do sistema, se disponível."""
-    for name in ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable"):
-        path = shutil.which(name)
-        if path:
-            return path
-    return None
-
-
 class BrowserSession:
     """Wrapper fino sobre uma página Playwright para chamadas à API."""
 
     def __init__(self):
-        print("[debug] sync_playwright().start()...")
         self._pw = sync_playwright().start()
-        launch_args = dict(
+        self._browser = self._pw.chromium.launch(
             headless=True,
             args=["--no-sandbox", "--disable-setuid-sandbox",
                   "--disable-dev-shm-usage", "--disable-gpu"],
         )
-        sys_chrome = _system_chromium()
-        print(f"[debug] system chromium: {sys_chrome}")
-        if sys_chrome:
-            launch_args["executable_path"] = sys_chrome
-        print(f"[debug] chromium.launch({launch_args})...")
-        self._browser = self._pw.chromium.launch(**launch_args)
-        print("[debug] browser lançado, criando contexto...")
         self._ctx = self._browser.new_context(user_agent=_UA)
         self._page: Page = self._ctx.new_page()
-        print("[debug] página criada, iniciando warm_up...")
         self._warm_up()
 
     def _warm_up(self):
