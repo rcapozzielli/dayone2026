@@ -14,7 +14,6 @@ Dependências:
 import difflib
 import json
 import os
-import sys as _sys
 import unicodedata
 import time
 from datetime import datetime
@@ -76,43 +75,27 @@ class BrowserSession:
 
     def __init__(self):
         self._pw = sync_playwright().start()
-        _args = ["--disable-blink-features=AutomationControlled"]
-        if _sys.platform != "win32":
-            _args += ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
-        self._browser = self._pw.chromium.launch(headless=False, args=_args)
-        self._ctx = self._browser.new_context(
-            user_agent=_UA,
-            viewport={"width": 1366, "height": 768},
-            locale="pt-BR",
-            timezone_id="America/Sao_Paulo",
-        )
-        self._ctx.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
-            Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en'] });
-            window.chrome = { runtime: {} };
-        """)
+        self._browser = self._pw.chromium.launch(headless=True)
+        self._ctx = self._browser.new_context(user_agent=_UA)
         self._page: Page = self._ctx.new_page()
         self._warm_up()
 
     def _warm_up(self):
         """Visita a página principal para estabelecer sessão/cookies."""
         print("Iniciando sessão no SofaScore...")
-        self._page.goto("https://www.sofascore.com/", wait_until="networkidle", timeout=60_000)
+        self._page.goto("https://www.sofascore.com/", wait_until="domcontentloaded", timeout=60_000)
         time.sleep(3)
         print("Sessão pronta.\n")
 
     def get_json(self, path: str) -> dict:
-        """Executa fetch() dentro do browser com credenciais completas."""
+        """Executa fetch(path) dentro do browser e retorna o JSON parseado."""
         url = f"{BASE_URL}{path}"
         result = self._page.evaluate(
             """async (url) => {
                 const resp = await fetch(url, {
-                    credentials: 'include',
                     headers: {
                         'Accept': 'application/json, text/plain, */*',
-                        'Referer': 'https://www.sofascore.com/',
-                        'Origin': 'https://www.sofascore.com',
+                        'Referer': 'https://www.sofascore.com/'
                     }
                 });
                 if (!resp.ok) return { __error: resp.status };
@@ -143,7 +126,8 @@ def fetch_last_games(session: BrowserSession, team_id: int, n_games: int = 5) ->
             data = session.get_json(f"/team/{team_id}/events/last/{page}")
             events = data.get("events", [])
         except Exception as e:
-            raise RuntimeError(f"Falha ao buscar jogos do time {team_id} (p{page}): {e}") from e
+            print(f"  [ERRO] Jogos do time {team_id} (p{page}): {e}")
+            break
 
         if not events:
             break
