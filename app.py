@@ -4,19 +4,9 @@ streamlit run app.py
 """
 
 import asyncio
-import pathlib
 import queue
-import subprocess
 import sys
 import threading
-
-# Baixa o Chromium gerenciado pelo Playwright se não estiver em cache
-_pw_cache = pathlib.Path.home() / ".cache" / "ms-playwright"
-if not any(_pw_cache.glob("chromium-*")):
-    subprocess.run(
-        [sys.executable, "-m", "playwright", "install", "chromium"],
-        check=False, capture_output=True
-    )
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -38,34 +28,26 @@ class _PlaywrightWorker:
     def __init__(self):
         self._q = queue.Queue()
         self._session = None
-        self._loop_error = None
         self._t = threading.Thread(target=self._loop, daemon=True)
         self._t.start()
 
     def _loop(self):
-        try:
-            if sys.platform == "win32":
-                asyncio.set_event_loop(asyncio.new_event_loop())
-            while True:
-                item = self._q.get()
-                if item is None:
-                    break
-                fn, rq = item
-                try:
-                    rq.put(("ok", fn()))
-                except Exception as exc:
-                    rq.put(("err", exc))
-        except Exception as e:
-            self._loop_error = str(e)
-            print(f"[debug] _loop crashed: {e}")
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+        while True:
+            item = self._q.get()
+            if item is None:
+                break
+            fn, rq = item
+            try:
+                rq.put(("ok", fn()))
+            except Exception as exc:
+                rq.put(("err", exc))
 
-    def _run(self, fn, timeout=90):
+    def _run(self, fn):
         rq = queue.Queue()
         self._q.put((fn, rq))
-        try:
-            status, value = rq.get(timeout=timeout)
-        except queue.Empty:
-            raise TimeoutError(f"Playwright travou após {timeout}s")
+        status, value = rq.get()
         if status == "err":
             raise value
         return value
@@ -1004,11 +986,6 @@ with st.sidebar:
     st.title("Copa 2026 Stats")
 
     worker = st.session_state.worker
-    # Descarta worker cujo thread morreu
-    if worker is not None and not worker._t.is_alive():
-        st.session_state.worker = None
-        worker = None
-
     if worker is None or not worker.ready:
         st.warning("Sessão inativa")
         if st.button("Iniciar Sessão", type="primary", use_container_width=True):
@@ -1016,12 +993,8 @@ with st.sidebar:
                 worker = _PlaywrightWorker()
                 st.session_state.worker = worker
             with st.spinner("Abrindo Chromium..."):
-                try:
-                    worker.start_session()
-                    st.rerun()
-                except Exception as e:
-                    st.session_state.worker = None
-                    st.error(f"Erro ao iniciar sessão: {e}")
+                worker.start_session()
+            st.rerun()
     else:
         st.success("Sessão ativa")
         if st.button("Encerrar sessão", use_container_width=True):
@@ -1038,12 +1011,7 @@ with st.sidebar:
     if mode == "Times":
         sorted_teams = sorted(coletor.ALL_TEAMS.items(), key=lambda x: x[1])
         name_to_id   = {n: tid for tid, n in sorted_teams}
-        all_names    = list(name_to_id)
-        if st.button("Selecionar todos", use_container_width=True):
-            st.session_state["sel_teams_all"] = all_names
-        default_sel  = st.session_state.pop("sel_teams_all", [])
-        sel_names    = st.multiselect("Times", all_names, default=default_sel,
-                                      placeholder="Buscar time...")
+        sel_names    = st.multiselect("Times", list(name_to_id), placeholder="Buscar time...")
         n_games      = st.slider("Jogos por time", 1, 15, 5)
 
         with st.expander("Filtros de análise"):
@@ -1054,21 +1022,6 @@ with st.sidebar:
 
         do_collect_teams   = st.button("Coletar", type="primary", use_container_width=True,
                                         disabled=not (sel_names and ready))
-
-        st.divider()
-        up_teams = st.file_uploader("Importar JSON de times", type="json", key="up_teams",
-                                     help="Exporte localmente e importe aqui")
-        if up_teams is not None:
-            import json as _j
-            st.session_state.team_data = _j.loads(up_teams.read())
-            st.rerun()
-
-        if st.session_state.team_data:
-            import json as _j
-            st.download_button("Exportar dados coletados", use_container_width=True,
-                               data=_j.dumps(st.session_state.team_data, ensure_ascii=False, indent=2),
-                               file_name="times_data.json", mime="application/json")
-
         do_collect_players = False
 
     else:
@@ -1099,63 +1052,39 @@ with st.sidebar:
 
         do_collect_players = st.button("Coletar", type="primary", use_container_width=True,
                                         disabled=not (sel_labels and ready))
-
-        st.divider()
-        up_players = st.file_uploader("Importar JSON de jogadores", type="json", key="up_players",
-                                       help="Exporte localmente e importe aqui")
-        if up_players is not None:
-            import json as _j
-            st.session_state.player_data = _j.loads(up_players.read())
-            st.rerun()
-
-        if st.session_state.player_data:
-            import json as _j
-            st.download_button("Exportar dados coletados", use_container_width=True,
-                               data=_j.dumps(st.session_state.player_data, ensure_ascii=False, indent=2),
-                               file_name="jogadores_data.json", mime="application/json")
-
         do_collect_teams   = False
 
 # ── Coleta ────────────────────────────────────────────────────────────────────
 
-
 if do_collect_teams:
-    try:
-        sess  = _WorkerSession(st.session_state.worker)
-        teams = {name_to_id[n]: n for n in sel_names}
-        total = len(teams)
-        bar   = st.progress(0, text="Iniciando...")
-        rows  = []
-        for i, (tid, tname) in enumerate(teams.items()):
-            bar.progress(i / total, text=f"Coletando {tname} ({i+1}/{total})...")
-            new_rows = coletor.collect_team_stats(sess, tid, tname, n_games=n_games)
-            st.write(f"DEBUG: {tname} → {len(new_rows)} linhas coletadas")
-            rows.extend(new_rows)
-            bar.progress((i + 1) / total)
-        st.session_state.team_data = rows
-        bar.empty()
-        st.rerun()
-    except Exception as _e:
-        st.error(f"Erro na coleta de times: {_e}")
+    sess  = _WorkerSession(st.session_state.worker)
+    teams = {name_to_id[n]: n for n in sel_names}
+    total = len(teams)
+    bar   = st.progress(0, text="Iniciando...")
+    rows  = []
+    for i, (tid, tname) in enumerate(teams.items()):
+        bar.progress(i / total, text=f"Coletando {tname} ({i+1}/{total})...")
+        rows.extend(coletor.collect_team_stats(sess, tid, tname, n_games=n_games))
+        bar.progress((i + 1) / total)
+    st.session_state.team_data = rows
+    bar.empty()
+    st.rerun()
 
 if do_collect_players:
-    try:
-        sess  = _WorkerSession(st.session_state.worker)
-        tid   = copa_name_to_id[chosen_team]
-        plist = [player_options[lbl] for lbl in sel_labels if lbl in player_options]
-        total = len(plist)
-        bar   = st.progress(0, text="Iniciando...")
-        rows  = []
-        for i, p in enumerate(plist):
-            bar.progress(i / total, text=f"Coletando {p['name']} ({i+1}/{total})...")
-            rows.extend(collect_player_stats(sess, p["id"], p["name"], tid, chosen_team, n_games,
-                                              selecao_only=selecao_only))
-            bar.progress((i + 1) / total)
-        st.session_state.player_data = rows
-        bar.empty()
-        st.rerun()
-    except Exception as _e:
-        st.error(f"Erro na coleta de jogadores: {_e}")
+    sess  = _WorkerSession(st.session_state.worker)
+    tid   = copa_name_to_id[chosen_team]
+    plist = [player_options[lbl] for lbl in sel_labels if lbl in player_options]
+    total = len(plist)
+    bar   = st.progress(0, text="Iniciando...")
+    rows  = []
+    for i, p in enumerate(plist):
+        bar.progress(i / total, text=f"Coletando {p['name']} ({i+1}/{total})...")
+        rows.extend(collect_player_stats(sess, p["id"], p["name"], tid, chosen_team, n_games,
+                                          selecao_only=selecao_only))
+        bar.progress((i + 1) / total)
+    st.session_state.player_data = rows
+    bar.empty()
+    st.rerun()
 
 # ── Exibição: Times ───────────────────────────────────────────────────────────
 
