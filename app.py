@@ -3,7 +3,6 @@ app.py — Painel de Análise Pré-Jogo | Copa 2026
 streamlit run app.py
 """
 
-import asyncio
 import pathlib
 import queue
 import subprocess
@@ -44,8 +43,6 @@ class _PlaywrightWorker:
 
     def _loop(self):
         try:
-            if sys.platform == "win32":
-                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
             while True:
                 item = self._q.get()
                 if item is None:
