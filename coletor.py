@@ -92,24 +92,18 @@ class BrowserSession:
         print("Sessão pronta.\n")
 
     def get_json(self, path: str) -> dict:
-        """Executa fetch(path) dentro do browser e retorna o JSON parseado."""
+        """Navega diretamente ao endpoint JSON — envia todos os cookies do contexto."""
+        import json as _json
         url = f"{BASE_URL}{path}"
-        result = self._page.evaluate(
-            """async (url) => {
-                const resp = await fetch(url, {
-                    headers: {
-                        'Accept': 'application/json, text/plain, */*',
-                        'Referer': 'https://www.sofascore.com/'
-                    }
-                });
-                if (!resp.ok) return { __error: resp.status };
-                return await resp.json();
-            }""",
-            url,
-        )
-        if isinstance(result, dict) and "__error" in result:
-            raise RuntimeError(f"HTTP {result['__error']} para {url}")
-        return result or {}
+        resp = self._page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+        if resp is None or not resp.ok:
+            status = resp.status if resp else "?"
+            raise RuntimeError(f"HTTP {status} para {url}")
+        try:
+            content = self._page.locator("pre").inner_text(timeout=5_000)
+        except Exception:
+            content = self._page.inner_text("body")
+        return _json.loads(content)
 
     def close(self):
         self._browser.close()
