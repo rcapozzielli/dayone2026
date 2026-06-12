@@ -76,11 +76,22 @@ class BrowserSession:
 
     def __init__(self):
         self._pw = sync_playwright().start()
-        _args = []
+        _args = ["--disable-blink-features=AutomationControlled"]
         if _sys.platform != "win32":
             _args += ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
-        self._browser = self._pw.chromium.launch(headless=True, args=_args)
-        self._ctx = self._browser.new_context(user_agent=_UA)
+        self._browser = self._pw.chromium.launch(headless=False, args=_args)
+        self._ctx = self._browser.new_context(
+            user_agent=_UA,
+            viewport={"width": 1366, "height": 768},
+            locale="pt-BR",
+            timezone_id="America/Sao_Paulo",
+        )
+        self._ctx.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+            Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en'] });
+            window.chrome = { runtime: {} };
+        """)
         self._page: Page = self._ctx.new_page()
         self._warm_up()
 
@@ -92,18 +103,26 @@ class BrowserSession:
         print("Sessão pronta.\n")
 
     def get_json(self, path: str) -> dict:
-        """Navega diretamente ao endpoint JSON — envia todos os cookies do contexto."""
-        import json as _json
+        """Executa fetch() dentro do browser com credenciais completas."""
         url = f"{BASE_URL}{path}"
-        resp = self._page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-        if resp is None or not resp.ok:
-            status = resp.status if resp else "?"
-            raise RuntimeError(f"HTTP {status} para {url}")
-        try:
-            content = self._page.locator("pre").inner_text(timeout=5_000)
-        except Exception:
-            content = self._page.inner_text("body")
-        return _json.loads(content)
+        result = self._page.evaluate(
+            """async (url) => {
+                const resp = await fetch(url, {
+                    credentials: 'include',
+                    headers: {
+                        'Accept': 'application/json, text/plain, */*',
+                        'Referer': 'https://www.sofascore.com/',
+                        'Origin': 'https://www.sofascore.com',
+                    }
+                });
+                if (!resp.ok) return { __error: resp.status };
+                return await resp.json();
+            }""",
+            url,
+        )
+        if isinstance(result, dict) and "__error" in result:
+            raise RuntimeError(f"HTTP {result['__error']} para {url}")
+        return result or {}
 
     def close(self):
         self._browser.close()
