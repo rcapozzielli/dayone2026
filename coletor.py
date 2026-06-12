@@ -1,14 +1,12 @@
 """
 Coletor de estatísticas do SofaScore via endpoints JSON internos.
-Usa Playwright para simular um browser real (necessário para evitar bloqueio 403).
+Usa curl_cffi para imitar o fingerprint TLS do Chrome e evitar bloqueio 403.
 
 Uso:
   python coletor.py
-  (o script pergunta quais times, quantos jogos e o nome do arquivo)
 
 Dependências:
-  pip install playwright pandas openpyxl
-  python -m playwright install chromium
+  pip install curl_cffi pandas openpyxl
 """
 
 import difflib
@@ -22,7 +20,7 @@ import pandas as pd
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.formatting.rule import ColorScaleRule
-from playwright.sync_api import sync_playwright, Page
+from curl_cffi import requests as curl_requests
 
 # ---------------------------------------------------------------------------
 # Cache de estatísticas de eventos (evita rebuscar jogos já coletados)
@@ -71,45 +69,31 @@ _UA = (
 # ---------------------------------------------------------------------------
 
 class BrowserSession:
-    """Wrapper fino sobre uma página Playwright para chamadas à API."""
+    """Sessão HTTP com fingerprint TLS do Chrome via curl_cffi."""
 
     def __init__(self):
-        self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(headless=True)
-        self._ctx = self._browser.new_context(user_agent=_UA)
-        self._page: Page = self._ctx.new_page()
-        self._warm_up()
-
-    def _warm_up(self):
-        """Visita a página principal para estabelecer sessão/cookies."""
         print("Iniciando sessão no SofaScore...")
-        self._page.goto("https://www.sofascore.com/", wait_until="domcontentloaded", timeout=60_000)
-        time.sleep(3)
+        self._s = curl_requests.Session(impersonate="chrome124")
+        self._s.headers.update({
+            "Accept":          "application/json, text/plain, */*",
+            "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+            "Referer":         "https://www.sofascore.com/",
+            "Origin":          "https://www.sofascore.com",
+            "User-Agent":      _UA,
+        })
+        # Aquece a sessão para obter cookies do SofaScore
+        self._s.get("https://www.sofascore.com/", timeout=30)
         print("Sessão pronta.\n")
 
     def get_json(self, path: str) -> dict:
-        """Executa fetch(path) dentro do browser e retorna o JSON parseado."""
-        url = f"{BASE_URL}{path}"
-        result = self._page.evaluate(
-            """async (url) => {
-                const resp = await fetch(url, {
-                    headers: {
-                        'Accept': 'application/json, text/plain, */*',
-                        'Referer': 'https://www.sofascore.com/'
-                    }
-                });
-                if (!resp.ok) return { __error: resp.status };
-                return await resp.json();
-            }""",
-            url,
-        )
-        if isinstance(result, dict) and "__error" in result:
-            raise RuntimeError(f"HTTP {result['__error']} para {url}")
-        return result or {}
+        url  = f"{BASE_URL}{path}"
+        resp = self._s.get(url, timeout=30)
+        if not resp.ok:
+            raise RuntimeError(f"HTTP {resp.status_code} para {url}")
+        return resp.json()
 
     def close(self):
-        self._browser.close()
-        self._pw.stop()
+        self._s.close()
 
 
 # ---------------------------------------------------------------------------

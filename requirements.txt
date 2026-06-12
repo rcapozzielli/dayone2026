@@ -1,3 +1,5 @@
-requests
+streamlit
 pandas
+plotly
 openpyxl
+curl_cffi

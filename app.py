@@ -3,11 +3,6 @@ app.py — Painel de Análise Pré-Jogo | Copa 2026
 streamlit run app.py
 """
 
-import asyncio
-import queue
-import sys
-import threading
-
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -21,65 +16,6 @@ from jogadores import (
     _POS_LABEL,
     _load_cache as _load_jog_cache,
 )
-
-# ── Playwright worker ─────────────────────────────────────────────────────────
-
-class _PlaywrightWorker:
-    def __init__(self):
-        self._q = queue.Queue()
-        self._session = None
-        self._t = threading.Thread(target=self._loop, daemon=True)
-        self._t.start()
-
-    def _loop(self):
-        if sys.platform == "win32":
-            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-        while True:
-            item = self._q.get()
-            if item is None:
-                break
-            fn, rq = item
-            try:
-                rq.put(("ok", fn()))
-            except Exception as exc:
-                rq.put(("err", exc))
-
-    def _run(self, fn):
-        rq = queue.Queue()
-        self._q.put((fn, rq))
-        status, value = rq.get()
-        if status == "err":
-            raise value
-        return value
-
-    @property
-    def ready(self):
-        return self._session is not None
-
-    def start_session(self):
-        def _s():
-            self._session = coletor.BrowserSession()
-        self._run(_s)
-
-    def stop_session(self):
-        def _stop():
-            if self._session:
-                self._session.close()
-                self._session = None
-        self._run(_stop)
-
-    def get_json(self, path):
-        sess = self._session
-        return self._run(lambda: sess.get_json(path))
-
-
-class _WorkerSession:
-    def __init__(self, w):
-        self._w = w
-    def get_json(self, path):
-        return self._w.get_json(path)
-    def close(self):
-        pass
 
 
 # ── Configuração ──────────────────────────────────────────────────────────────
@@ -985,27 +921,27 @@ def _show_comparison(df_all: pd.DataFrame):
 with st.sidebar:
     st.title("Copa 2026 Stats")
 
-    worker = st.session_state.worker
-    if worker is None or not worker.ready:
+    session = st.session_state.worker
+    if session is None:
         st.warning("Sessão inativa")
         if st.button("Iniciar Sessão", type="primary", use_container_width=True):
-            if worker is None:
-                worker = _PlaywrightWorker()
-                st.session_state.worker = worker
-            with st.spinner("Abrindo Chromium..."):
-                worker.start_session()
-            st.rerun()
+            with st.spinner("Conectando ao SofaScore..."):
+                try:
+                    st.session_state.worker = coletor.BrowserSession()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao iniciar sessão: {e}")
     else:
         st.success("Sessão ativa")
         if st.button("Encerrar sessão", use_container_width=True):
-            worker.stop_session()
+            session.close()
             st.session_state.worker = None
             st.session_state.roster_cache = {}
             st.rerun()
 
     st.divider()
     mode  = st.radio("Modo", ["Times", "Jogadores"])
-    ready = worker is not None and worker.ready
+    ready = session is not None
     st.divider()
 
     if mode == "Times":
@@ -1035,9 +971,7 @@ with st.sidebar:
             tid = copa_name_to_id[chosen_team]
             if tid not in st.session_state.roster_cache:
                 with st.spinner("Buscando elenco..."):
-                    st.session_state.roster_cache[tid] = fetch_team_players(
-                        _WorkerSession(worker), tid
-                    )
+                    st.session_state.roster_cache[tid] = fetch_team_players(session, tid)
             for p in sorted(st.session_state.roster_cache.get(tid, []),
                             key=lambda x: x["position"] + x["name"]):
                 lbl = f"{p['name']} [{_POS_LABEL.get(p['position'], p['position'])}]"
@@ -1057,7 +991,7 @@ with st.sidebar:
 # ── Coleta ────────────────────────────────────────────────────────────────────
 
 if do_collect_teams:
-    sess  = _WorkerSession(st.session_state.worker)
+    sess  = st.session_state.worker
     teams = {name_to_id[n]: n for n in sel_names}
     total = len(teams)
     bar   = st.progress(0, text="Iniciando...")
@@ -1071,7 +1005,7 @@ if do_collect_teams:
     st.rerun()
 
 if do_collect_players:
-    sess  = _WorkerSession(st.session_state.worker)
+    sess  = st.session_state.worker
     tid   = copa_name_to_id[chosen_team]
     plist = [player_options[lbl] for lbl in sel_labels if lbl in player_options]
     total = len(plist)
